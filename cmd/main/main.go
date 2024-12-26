@@ -1,65 +1,73 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"os"
-	"os/exec"
 
-	"github.com/paxzhu/go-solana/internal/wallet" // 注意：需要替换 'your-username' 为你的项目名
+	"github.com/paxzhu/go-solana/pkg/wallet"
+
+	"github.com/blocto/solana-go-sdk/types"
 )
 
 func main() {
-	// 生成 5 个钱包
-	wallets, err := wallet.GenerateMultipleWallets(5)
+	// 创建 WalletManager 实例
+	wm, err := wallet.NewWalletManager("devnet")
 	if err != nil {
-		log.Fatal("生成钱包失败:", err)
+		log.Fatalf("Error creating WalletManager: %v", err)
 	}
 
-	// 打印生成的钱包信息
-	for i, wallet := range wallets {
-		fmt.Printf("Wallet %d:\n", i+1)
-		fmt.Printf("Public Key: %s\n", wallet.PublicKey)
-		fmt.Printf("Private Key: %s\n", wallet.PrivateKey)
-		fmt.Println("-------------------")
-	}
-
-	// 创建钱包连接（使用 devnet）
-	conn := wallet.NewConnection("")
-
-	if len(wallets) > 0 {
-		publicKey := wallets[0].PublicKey
-		err := os.WriteFile("wallet_pubkey.txt", []byte(publicKey), 0644)
-		if err != nil {
-			log.Fatal("无法保存公钥:", err)
-		}
-		fmt.Println("第一个钱包的公钥已保存到 wallet_pubkey.txt")
-	}
-
-	cmd := exec.Command("bash", "airdrop.sh")
-	output, err := cmd.CombinedOutput()
+	// 创建新账户并显示公钥
+	publicKey, err := wm.CreateAccount()
 	if err != nil {
-		log.Printf("执行airdrop脚本失败: %v\n", err)
+		log.Fatalf("Error creating account: %v", err)
 	}
-	fmt.Printf("Airdrop结果: %s\n", output)
+	fmt.Printf("New account created with public key: %s\n", publicKey)
 
-	// 连接第一个钱包并获取信息
-	if len(wallets) > 0 {
-		fmt.Println("空投后的钱包信息:")
-		err := conn.GetWalletInfo(wallets[0].PublicKey)
-		if err != nil {
-			log.Printf("获取钱包信息失败: %v\n", err)
-		}
+	// 请求空投以获得测试 SOL
+	txSig, err := wm.client.RequestAirdrop(context.Background(), publicKey, 1000000000) // 1 SOL
+	if err != nil {
+		log.Fatalf("Error requesting airdrop: %v", err)
 	}
+	fmt.Printf("Airdrop transaction signature: %s\n", txSig)
 
-	// if len(wallets) > 0 {
-	// 	fmt.Println("尝试获取第一个钱包的信息:")
-	// 	err := conn.GetWalletInfo(wallets[0].PublicKey)
-	// 	if err != nil {
-	// 		log.Printf("获取钱包信息失败: %v\n", err)
-	// 	}
-	// } else {
-	// 	fmt.Println("没有生成任何钱包")
-	// }
+	// 检查账户余额
+	balance, err := wm.CheckAmount(context.Background(), "SOL")
+	if err != nil {
+		log.Fatalf("Error checking balance: %v", err)
+	}
+	fmt.Printf("Balance for account %s: %d SOL\n", publicKey, balance)
 
+	// 创建另一个账户以进行转账
+	toAccount := types.NewAccount()
+	toPublicKey := toAccount.PublicKey.ToBase58()
+	fmt.Printf("Transfering to new account with public key: %s\n", toPublicKey)
+
+	// 转账 0.5 SOL
+	err = wm.Transfer(context.Background(), "SOL", toPublicKey, 500000000) // 0.5 SOL
+	if err != nil {
+		log.Fatalf("Error transferring SOL: %v", err)
+	}
+	fmt.Println("Transfer successful!")
+
+	// 检查目标账户余额
+	toBalance, err := wm.CheckAmount(context.Background(), "SOL")
+	if err != nil {
+		log.Fatalf("Error checking recipient balance: %v", err)
+	}
+	fmt.Printf("Balance for recipient account %s: %d SOL\n", toPublicKey, toBalance)
+
+	// 加载现有账户（假设私钥存储在文件中）
+	err = wm.LoadAccount("path/to/private/key.json") // 替换为实际路径
+	if err != nil {
+		log.Fatalf("Error loading account: %v", err)
+	}
+	fmt.Printf("Loaded account with public key: %s\n", wm.account.PublicKey.ToBase58())
+
+	// 再次检查余额
+	newBalance, err := wm.CheckAmount(context.Background(), "SOL")
+	if err != nil {
+		log.Fatalf("Error checking loaded account balance: %v", err)
+	}
+	fmt.Printf("Balance for loaded account: %d SOL\n", newBalance)
 }
