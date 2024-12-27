@@ -7,15 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/blocto/solana-go-sdk/common"
-	"github.com/blocto/solana-go-sdk/program/token"
 	"github.com/blocto/solana-go-sdk/types"
 	"github.com/paxzhu/go-solana/pkg/config"
 )
+
+const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112"
 
 // WalletManager 管理 Solana 钱包的结构体
 type WalletManager struct {
@@ -103,7 +105,8 @@ func (wm *WalletManager) CheckAmount(ctx context.Context, mintAddr string) (uint
 		return 0, errors.New("no account loaded")
 	}
 
-	if ticker == "SOL" {
+	// mintAddr为空，则直接获取SOL余额
+	if mintAddr == SOL_MINT_ADDR {
 		balance, err := wm.client.GetBalance(
 			ctx,
 			wm.account.PublicKey.ToBase58(),
@@ -114,81 +117,42 @@ func (wm *WalletManager) CheckAmount(ctx context.Context, mintAddr string) (uint
 		return balance, nil
 	}
 
-	// 这里应该实现 获取SPL代币账户信息
-
-	tokenAccount, err := wm.client.GetTokenAccountsByOwnerByMint(ctx, wm.account.PublicKey.ToBase58(), mintAddr)
+	// 获取SPL代币账户信息
+	tokenAccounts, err := wm.client.GetTokenAccountsByOwnerByMint(ctx, wm.account.PublicKey.ToBase58(), mintAddr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get token balance: %w", err)
 	}
 
-	if len(tokenAccount.Value) == 0 {
+	if len(tokenAccounts) == 0 {
 		return 0, nil
 	}
 
-	return tokenAccount.Value[0].Account.Data.Parsed.Info.TokenAmount.Amount, nil
+	return tokenAccounts[0].Amount, nil
 }
 
 // Transfer 转账功能
-func (wm *WalletManager) Transfer(ctx context.Context, ticker string, to string, amount uint64) error {
-	if ticker == "SOL" {
-		tx, err := types.NewTransaction(types.NewTransactionParam{
-			Message: types.NewMessage(types.NewMessageParam{
-				FeePayer: wm.account.PublicKey,
-				Instructions: []types.Instruction{
-					types.NewInstruction(types.SystemProgramID, []byte{2, 0, 0, 0}, // Transfer instruction
-						types.NewAccountMeta(wm.account.PublicKey, true, true),
-						types.NewAccountMeta(common.PublicKeyFromString(to), false, true),
-					),
-				},
-			}),
-			Signers: []types.Account{wm.account},
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create transaction: %w", err)
-		}
+func (wm *WalletManager) TransferSOL(ctx context.Context, toAddress string, amount uint64) error {
+	senderPrivateKey := wm.account.PrivateKey
+	senderPubKey := wm.account.PublicKey
+	receiverPubKey := common.PublicKeyFromString(toAddress)
 
-		sig, err := wm.client.SendTransaction(ctx, tx)
-		if err != nil {
-			return fmt.Errorf("failed to send transaction: %w", err)
-		}
-
-		return wm.client.WaitForConfirmation(ctx, sig, nil)
-	}
-
-	// Token transfer implementation
-	tokenPubKey, err := wm.getTokenPubKey(ticker)
+	// 获取最近的区块哈希（用于构建交易）
+	recentBlockhashResponse, err := wm.client.GetLatestBlockhash(context.Background())
 	if err != nil {
-		return err
+		log.Fatalf("获取最近区块哈希失败: %v", err)
 	}
+	// 合约的 ProgramID
+	programID := common.PublicKeyFromString() // 替换为你的合约 Program ID
 
-	tx, err := token.NewTransferInstruction(
-		amount,
-		wm.account.PublicKey,
-		common.PublicKeyFromString(to),
-		tokenPubKey,
-		[]types.Account{wm.account},
-	).Build()
-	if err != nil {
-		return fmt.Errorf("failed to build token transfer: %w", err)
-	}
+	// 构建交易消息
+	message := types.NewMessage(types.NewMessageParams{
+		FeePayer: 			senderPubKey,
+		RecentBlockhash: 	recentBlockhashResponse.Blockhash,
+		Instructions: []types.Instruction{
 
-	sig, err := wm.client.SendTransaction(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("failed to send token transaction: %w", err)
-	}
-
-	return wm.client.WaitForConfirmation(ctx, sig, nil)
-}
-
-// 内部辅助方法：获取代币公钥
-func (wm *WalletManager) getTokenPubKey(ticker string) (common.PublicKey, error) {
-	if pubKey, ok := wm.tokenCache[ticker]; ok {
-		return pubKey, nil
-	}
-
-	// 这里应该实现从代币符号到代币地址的映射
-	// 实际使用时需要维护一个代币地址映射表
-	return common.PublicKey{}, fmt.Errorf("token not supported: %s", ticker)
+		},
+	})}
+	)
 }
 
 // Buy 市价买入代币

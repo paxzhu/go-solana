@@ -86,6 +86,17 @@ import (
 func getTokenBalance(walletAddress string, tokenMintAddress string) (uint64, error) {
 	// 创建一个 Solana 客户端
 	c := client.NewClient(rpc.DevnetRPCEndpoint)
+	// c := client.NewClient(rpc.LocalnetRPCEndpoint)
+	if tokenMintAddress == "" {
+		balance, err := c.GetBalance(
+			context.TODO(),
+			walletAddress,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get SOL balance: %w", err)
+		}
+		return balance, nil
+	}
 
 	// 使用 GetTokenAccountsByOwnerByMint 获取代币账户
 	tokenAccounts, err := c.GetTokenAccountsByOwnerByMint(
@@ -96,7 +107,6 @@ func getTokenBalance(walletAddress string, tokenMintAddress string) (uint64, err
 	if err != nil {
 		return 0, fmt.Errorf("failed to get token accounts: %w", err)
 	}
-
 	// 打印 tokenAccounts 的详细信息
 	for i, account := range tokenAccounts {
 		fmt.Printf("Account %d:\n", i+1)
@@ -104,6 +114,7 @@ func getTokenBalance(walletAddress string, tokenMintAddress string) (uint64, err
 		fmt.Printf("  Mint: %s\n", account.Mint.ToBase58())
 		fmt.Printf("  Owner: %s\n", account.Owner.ToBase58())
 		fmt.Printf("  Token Amount: %d\n", account.Amount)
+		fmt.Printf("  TokenAccountState: %d\n", account.State)
 	}
 	return 0, nil
 	// // 遍历代币账户获取余额
@@ -125,13 +136,19 @@ func getTokenBalance(walletAddress string, tokenMintAddress string) (uint64, err
 }
 
 func main() {
-	walletAddress := "你的钱包地址"
-	tokenMintAddress := "代币的Mint地址"
+	walletAddress := "657u8g2j83MmSd7sbxkmJLD6onbqp86SJPoQbNWNeToe"
+	tokenMintAddress := "Cr7Q5ttDHLj64ASZiaDzyEAWyMooLBecT1YwEQscUw2k"
 
 	balance, err := getTokenBalance(walletAddress, tokenMintAddress)
 	if err != nil {
 		log.Fatalf("Error getting token balance: %v", err)
 	}
 
+	fmt.Printf("Token balance: %d\n", balance)
+
+	balance, err = getTokenBalance(walletAddress, "")
+	if err != nil {
+		log.Fatalf("Error getting token balance: %v", err)
+	}
 	fmt.Printf("Token balance: %d\n", balance)
 }
