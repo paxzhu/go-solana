@@ -13,6 +13,7 @@ import (
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/blocto/solana-go-sdk/common"
+	"github.com/blocto/solana-go-sdk/program/system"
 	"github.com/blocto/solana-go-sdk/types"
 	"github.com/paxzhu/go-solana/pkg/config"
 )
@@ -131,43 +132,55 @@ func (wm *WalletManager) CheckAmount(ctx context.Context, mintAddr string) (uint
 }
 
 // Transfer 转账功能
-func (wm *WalletManager) TransferSOL(ctx context.Context, toAddress string, amount uint64) error {
-	senderPrivateKey := wm.account.PrivateKey
+func (wm *WalletManager) TransferSOL(ctx context.Context, toAddress string, amount uint64) (string, error) {
 	senderPubKey := wm.account.PublicKey
 	receiverPubKey := common.PublicKeyFromString(toAddress)
 
 	// 获取最近的区块哈希（用于构建交易）
-	recentBlockhashResponse, err := wm.client.GetLatestBlockhash(context.Background())
+	recentBlockhashResponse, err := wm.client.GetLatestBlockhash(ctx)
 	if err != nil {
-		log.Fatalf("获取最近区块哈希失败: %v", err)
+		return "", fmt.Errorf("获取最近区块哈希失败: %v", err)
 	}
-	// 合约的 ProgramID
-	programID := common.PublicKeyFromString() // 替换为你的合约 Program ID
 
-	// 构建交易消息
-	message := types.NewMessage(types.NewMessageParams{
-		FeePayer: 			senderPubKey,
-		RecentBlockhash: 	recentBlockhashResponse.Blockhash,
+	transferInstruction := system.Transfer(system.TransferParam{
+		From:   senderPubKey,   // 发送账户的公钥
+		To:     receiverPubKey, // 接收账户的公钥
+		Amount: amount,
+	})
+
+	message := types.NewMessage(types.NewMessageParam{
+		FeePayer:        senderPubKey,
+		RecentBlockhash: recentBlockhashResponse.Blockhash,
 		Instructions: []types.Instruction{
-
+			transferInstruction,
 		},
-	})}
-	)
+	})
+
+	// create a transfer tx
+	tx, err := types.NewTransaction(types.NewTransactionParam{
+		Signers: []types.Account{wm.account},
+		Message: message,
+	})
+	if err != nil {
+		log.Fatalf("failed to new a transaction, err: %v", err)
+	}
+
+	// 发送交易
+	txhash, err := wm.client.SendTransaction(ctx, tx)
+	if err != nil {
+		return "", fmt.Errorf("发送交易失败: %v", err)
+	}
+	log.Println("txhash:", txhash)
+	return txhash, nil
 }
 
 // Buy 市价买入代币
-func (wm *WalletManager) Buy(ctx context.Context, tokenTicker string, amountInSOL float64) error {
-	// 获取代币地址
-	tokenMint, err := wm.getTokenPubKey(tokenTicker)
-	if err != nil {
-		return fmt.Errorf("invalid token: %w", err)
-	}
-
+func (wm *WalletManager) Buy(ctx context.Context, mintAddr string, amountInSOL float64) error {
 	// 构建报价请求
 	quoteURL := fmt.Sprintf("%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d",
 		JupiterQuoteAPI,
-		"So11111111111111111111111111111111111111112", // SOL 的代币地址
-		tokenMint.ToBase58(),
+		SOL_MINT_ADDR, // SOL 的代币地址
+		mintAddr,
 		uint64(amountInSOL*1e9), // 转换为 lamports
 		defaultSlippageBps,
 	)
@@ -184,20 +197,14 @@ func (wm *WalletManager) Buy(ctx context.Context, tokenTicker string, amountInSO
 		return fmt.Errorf("swap failed: %w", err)
 	}
 
-	fmt.Printf("Successfully bought %s tokens\n", tokenTicker)
+	fmt.Printf("Successfully bought %s tokens\n", mintAddr)
 	return nil
 }
 
 // Sell 市价卖出代币
-func (wm *WalletManager) Sell(ctx context.Context, tokenTicker string, amount float64) error {
-	// 获取代币地址
-	tokenMint, err := wm.getTokenPubKey(tokenTicker)
-	if err != nil {
-		return fmt.Errorf("invalid token: %w", err)
-	}
-
+func (wm *WalletManager) Sell(ctx context.Context, mintAddr string, amount float64) error {
 	// 检查代币余额
-	balance, err := wm.CheckAmount(ctx, tokenTicker)
+	balance, err := wm.CheckAmount(ctx, mintAddr)
 	if err != nil {
 		return fmt.Errorf("failed to check balance: %w", err)
 	}
@@ -209,8 +216,8 @@ func (wm *WalletManager) Sell(ctx context.Context, tokenTicker string, amount fl
 	// 构建报价请求
 	quoteURL := fmt.Sprintf("%s?inputMint=%s&outputMint=%s&amount=%d&slippageBps=%d",
 		JupiterQuoteAPI,
-		tokenMint.ToBase58(),
-		"So11111111111111111111111111111111111111112", // SOL
+		mintAddr,
+		SOL_MINT_ADDR, // SOL
 		uint64(amount),
 		defaultSlippageBps,
 	)
@@ -227,7 +234,7 @@ func (wm *WalletManager) Sell(ctx context.Context, tokenTicker string, amount fl
 		return fmt.Errorf("swap failed: %w", err)
 	}
 
-	fmt.Printf("Successfully sold %s tokens\n", tokenTicker)
+	fmt.Printf("Successfully sold %s tokens\n", mintAddr)
 	return nil
 }
 
