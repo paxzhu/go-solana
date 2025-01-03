@@ -1,42 +1,35 @@
 package wallet
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/blocto/solana-go-sdk/types"
 )
 
-func generateWallets(numWallets int, filename string) error {
-	if filename == "" {
-		filename = "wallets.csv"
-	}
-	// 创建或打开文件
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("无法创建文件: %v", err)
-	}
-	defer file.Close()
-
-	// 写入文件头
-	_, err = file.WriteString("PublicKey,PrivateKey\n")
-	if err != nil {
-		return fmt.Errorf("无法写入文件: %v", err)
-	}
-
-	// 生成钱包并写入文件
+func generateWallets(numWallets int) error {
 	for i := 0; i < numWallets; i++ {
-		wallet := types.NewAccount() // 生成新钱包
-		publicKey := wallet.PublicKey.ToBase58()
+		wallet := types.NewAccount() // Generate new wallet
 		privateKey := wallet.PrivateKey
+		publicKey := wallet.PublicKey.ToBase58()
 
-		// 将公私钥对写入文件
-		_, err = file.WriteString(fmt.Sprintf("%s,%v\n", publicKey, privateKey))
+		// Create a JSON file for each private key using the public key in the filename
+		// Truncate the public key for the filename
+		truncatedPublicKey := publicKey[:10] // Use first 10 characters
+		filename := fmt.Sprintf("assets/wallet_%s.json", truncatedPublicKey)
+		file, err := os.Create(filename)
 		if err != nil {
-			return fmt.Errorf("无法写入文件: %v", err)
+			return fmt.Errorf("unable to create file: %v", err)
+		}
+		defer file.Close()
+
+		// Write private key to JSON file
+		if err := json.NewEncoder(file).Encode(privateKey); err != nil {
+			return fmt.Errorf("unable to write to file: %v", err)
 		}
 
-		fmt.Printf("Wallet %d: Public Key: %s\n", i+1, publicKey)
+		fmt.Printf("Wallet with Public Key: %s, Private Key saved to %s\n", publicKey, filename)
 	}
 
 	return nil
