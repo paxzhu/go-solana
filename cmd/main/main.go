@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/blocto/solana-go-sdk/types"
 	"github.com/paxzhu/go-solana/pkg/wallet"
 )
 
 const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112"
 const GOAT_MINT_ADDR = "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump"
 const keyPath = "assets/wallet_7dEc3i8Niz.json"
-const singleTransferAmount = 100000000 // 0.5 SOL
+const singleTransferAmount = 100000000 // 0.1 SOL
 const QuoteAPI = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump&amount=500000000&slippageBps=100"
+const toPublicKey = "3qQEWctNXMxHiyoaQwAwn2xBRZGC7c2XeoPuLcZ6ZrUP"
 
 func main() {
+	// wallet.GenerateWallets(2)
 	// 创建 WalletManager 实例
 	wm, err := wallet.NewWalletManager("devnet")
 	if err != nil {
@@ -37,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading account: %v", err)
 	}
-	fmt.Printf("New account created with public key: %s\n", publicKey)
+	fmt.Printf("Load account with public key [%s] from [%s] \n", publicKey, keyPath)
 
 	// 请求空投以获得测试 SOL, 用于测试(可能存在空投限制)
 	isSuccessed := wm.RequestAirdrop(publicKey, 1000000000) // 1 SOL
@@ -54,12 +55,7 @@ func main() {
 	}
 	fmt.Printf("Balance for account %s: %d lamports\n", publicKey, balance)
 
-	// 创建另一个账户以进行转账
-	toAccount := types.NewAccount()
-	toPublicKey := toAccount.PublicKey.ToBase58()
-	fmt.Printf("Transfering to new account with public key: %s\n", toPublicKey)
-
-	// 向新账户转账
+	// 向另一个账户转账
 	txhash, err := wm.TransferSOL(context.Background(), toPublicKey, singleTransferAmount)
 	if err != nil {
 		log.Fatalf("Error transferring SOL: %v", err)
@@ -67,15 +63,20 @@ func main() {
 	fmt.Println("Transfer SOL successful!txhash:", txhash)
 
 	// 检查目标账户余额
-	toBalance, err := wm.CheckAmount(context.Background(), SOL_MINT_ADDR)
+	balance, err = wm.CheckAmount(context.Background(), SOL_MINT_ADDR)
 	if err != nil {
-		log.Fatalf("Error checking recipient balance: %v", err)
+		log.Fatalf("Error checking balance: %v", err)
 	}
-	fmt.Printf("Balance for recipient account %s: %d lamports\n", toPublicKey, toBalance)
+	fmt.Printf("Balance for account %s: %d lamports\n", toPublicKey, balance)
 
+	ata, err := wm.CreateTokenAccount(context.Background(), GOAT_MINT_ADDR)
+	if err != nil {
+		log.Fatalf("Error creating token account: %v", err)
+	}
+	fmt.Println("CreateTokenAccount successful!ata:", ata)
 	// 测试 Jupiter Swap
 	// wm.GetQuote(QuoteAPI)
-	wm.Sell(context.Background(), SOL_MINT_ADDR, 0.5)
+	wm.Sell(context.Background(), GOAT_MINT_ADDR, 0.5)
 
 	// 加载现有账户（假设私钥存储在文件中）
 	// err = wm.LoadAccount("path/to/private/key.json") // 替换为实际路径

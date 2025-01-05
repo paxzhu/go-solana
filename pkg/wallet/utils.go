@@ -8,7 +8,7 @@ import (
 	"github.com/blocto/solana-go-sdk/types"
 )
 
-func generateWallets(numWallets int) error {
+func GenerateWallets(numWallets int) error {
 	for i := 0; i < numWallets; i++ {
 		wallet := types.NewAccount() // Generate new wallet
 		privateKey := wallet.PrivateKey

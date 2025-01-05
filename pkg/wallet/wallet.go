@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,8 @@ import (
 	"github.com/blocto/solana-go-sdk/common"
 	"github.com/blocto/solana-go-sdk/program/associated_token_account"
 	"github.com/blocto/solana-go-sdk/program/system"
+	"github.com/blocto/solana-go-sdk/program/token"
+	"github.com/blocto/solana-go-sdk/rpc"
 	"github.com/blocto/solana-go-sdk/types"
 	"github.com/paxzhu/go-solana/pkg/config"
 )
@@ -108,6 +111,7 @@ func (wm *WalletManager) CreateAccount() (string, error) {
 	return account.PublicKey.ToBase58(), nil
 }
 
+// Mint需要和集群匹配，否则会出现“incorrect program id”的错误
 func (wm *WalletManager) CreateTokenAccount(ctx context.Context, mintAddr string) (string, error) {
 	mintPubkey := common.PublicKeyFromString(mintAddr)
 	ata, _, err := common.FindAssociatedTokenAddress(wm.Account.PublicKey, mintPubkey)
@@ -118,7 +122,7 @@ func (wm *WalletManager) CreateTokenAccount(ctx context.Context, mintAddr string
 
 	recentBlockhashResponse, err := wm.Client.GetLatestBlockhash(ctx)
 	if err != nil {
-		return "", fmt.Errorf("get recent block hash error, err: %v\n", err)
+		return "", fmt.Errorf("get recent block hash error, err: %w", err)
 	}
 
 	createTokenAccountInstruction := associated_token_account.Create(associated_token_account.CreateParam{
@@ -135,21 +139,21 @@ func (wm *WalletManager) CreateTokenAccount(ctx context.Context, mintAddr string
 			createTokenAccountInstruction,
 		},
 	})
-
+	fmt.Println("message:", message)
 	tx, err := types.NewTransaction(types.NewTransactionParam{
 		Signers: []types.Account{wm.Account},
 		Message: message,
 	})
 	if err != nil {
-		return "", fmt.Errorf("generate tx error, err: %v\n", err)
+		return "", fmt.Errorf("generate tx error, err: %v", err)
 	}
-
-	txhash, err := wm.Client.SendTransaction(context.Background(), tx)
+	fmt.Println("tx:", tx)
+	txhash, err := wm.Client.SendTransaction(ctx, tx)
 	if err != nil {
-		return "", fmt.Errorf("send raw tx error, err: %v\n", err)
+		return "", fmt.Errorf("send raw tx error, err: %v", err)
 	}
 
-	log.Println("txhash:", txhash)
+	fmt.Println("txhash:", txhash)
 	return ata.ToBase58(), nil
 }
 
@@ -378,54 +382,108 @@ func (wm *WalletManager) GetQuote(quoteURL string) (*QuoteResponse, error) {
 	return &quote, nil
 }
 
-// // executeSwap 执行代币交换
-// func (wm *WalletManager) executeSwap(ctx context.Context, quote *QuoteResponse) error {
-// 	// 构建交换请求
-// 	swapReq := struct {
-// 		UserPublicKey string `json:"userPublicKey"`
-// 		SwapData      []byte `json:"swapData"`
-// 	}{
-// 		UserPublicKey: wm.Account.PublicKey.ToBase58(),
-// 		SwapData:      quote.SwapData,
-// 	}
+// executeSwap 执行代币交换
+func (wm *WalletManager) executeSwap(ctx context.Context, quote *QuoteResponse) error {
+	// 构建交换请求
+	swapReq := struct {
+		UserPublicKey string        `json:"userPublicKey"`
+		QuoteResp     QuoteResponse `json:"quoteResponse"`
+	}{
+		UserPublicKey: wm.Account.PublicKey.ToBase58(),
+		QuoteResp:     *quote,
+	}
 
-// 	// 发送交换请求
-// 	reqBody, err := json.Marshal(swapReq)
-// 	if err != nil {
-// 		return err
-// 	}
+	// 发送交换请求
+	reqBody, err := json.Marshal(swapReq)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Sending swap request:", string(reqBody))
+	resp, err := http.Post(JupiterSwapAPI, "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
-// 	resp, err := http.Post(JupiterSwapAPI, "application/json", bytes.NewBuffer(reqBody))
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("swap request failed: %s", string(body))
+	}
 
-// 	if resp.StatusCode != http.StatusOK {
-// 		body, _ := io.ReadAll(resp.Body)
-// 		return fmt.Errorf("swap request failed: %s", string(body))
-// 	}
+	// 处理响应，获取交易指令
+	var swapResp struct {
+		SwapTransaction []byte `json:"swapTransaction"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&swapResp); err != nil {
+		return err
+	}
 
-// 	// 处理响应，获取交易指令
-// 	var swapResp struct {
-// 		SwapTransaction []byte `json:"swapTransaction"`
-// 	}
-// 	if err := json.NewDecoder(resp.Body).Decode(&swapResp); err != nil {
-// 		return err
-// 	}
+	// 使用 Transaction 对象进行初始化，假设您有 swapTransaction 数据
+	// tx, err := types.NewTransaction(swapResp.SwapTransaction)
 
-// 	// 使用 Transaction 对象进行初始化，假设您有 swapTransaction 数据
-// 	tx, err := types.NewTransaction(swapResp.SwapTransaction)
+	// // 签名交易
+	// tx.Sign([]types.Account{wm.Account})
 
-// 	// 签名交易
-// 	tx.Sign([]types.Account{wm.Account})
+	// // 发送交易
+	// sig, err := wm.Client.SendTransaction(ctx, tx)
+	// if err != nil {
+	// 	return err
+	// }
 
-// 	// 发送交易
-// 	sig, err := wm.Client.SendTransaction(ctx, tx)
-// 	if err != nil {
-// 		return err
-// 	}
+	return nil
+}
 
-// 	// 等待交易确认
-// 	return wm.Client.WaitForConfirmation(ctx, sig, nil)
-// }
+func CreateMint(feePayer types.Account, mintAuthority types.Account) {
+	c := client.NewClient(rpc.DevnetRPCEndpoint)
+
+	// create an mint account
+	mint := types.NewAccount()
+	fmt.Println("mint:", mint.PublicKey.ToBase58())
+
+	// get rent
+	rentExemptionBalance, err := c.GetMinimumBalanceForRentExemption(
+		context.Background(),
+		token.MintAccountSize,
+	)
+	if err != nil {
+		log.Fatalf("get min balacne for rent exemption, err: %v", err)
+	}
+
+	res, err := c.GetLatestBlockhash(context.Background())
+	if err != nil {
+		log.Fatalf("get recent block hash error, err: %v\n", err)
+	}
+
+	tx, err := types.NewTransaction(types.NewTransactionParam{
+		Message: types.NewMessage(types.NewMessageParam{
+			FeePayer:        feePayer.PublicKey,
+			RecentBlockhash: res.Blockhash,
+			Instructions: []types.Instruction{
+				system.CreateAccount(system.CreateAccountParam{
+					From:     feePayer.PublicKey,
+					New:      mint.PublicKey,
+					Owner:    common.TokenProgramID,
+					Lamports: rentExemptionBalance,
+					Space:    token.MintAccountSize,
+				}),
+				token.InitializeMint(token.InitializeMintParam{
+					Decimals:   8,
+					Mint:       mint.PublicKey,
+					MintAuth:   mintAuthority.PublicKey,
+					FreezeAuth: nil,
+				}),
+			},
+		}),
+		Signers: []types.Account{feePayer, mint},
+	})
+	if err != nil {
+		log.Fatalf("generate tx error, err: %v\n", err)
+	}
+
+	txhash, err := c.SendTransaction(context.Background(), tx)
+	if err != nil {
+		log.Fatalf("send tx error, err: %v\n", err)
+	}
+
+	log.Println("txhash:", txhash)
+}
