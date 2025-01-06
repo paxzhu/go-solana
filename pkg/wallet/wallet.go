@@ -139,7 +139,7 @@ func (wm *WalletManager) CreateTokenAccount(ctx context.Context, mintAddr string
 			createTokenAccountInstruction,
 		},
 	})
-	fmt.Println("message:", message)
+	// fmt.Println("message:", message)
 	tx, err := types.NewTransaction(types.NewTransactionParam{
 		Signers: []types.Account{wm.Account},
 		Message: message,
@@ -147,7 +147,7 @@ func (wm *WalletManager) CreateTokenAccount(ctx context.Context, mintAddr string
 	if err != nil {
 		return "", fmt.Errorf("generate tx error, err: %v", err)
 	}
-	fmt.Println("tx:", tx)
+	// fmt.Println("tx:", tx)
 	txhash, err := wm.Client.SendTransaction(ctx, tx)
 	if err != nil {
 		return "", fmt.Errorf("send raw tx error, err: %v", err)
@@ -277,6 +277,55 @@ func (wm *WalletManager) TransferSOL(ctx context.Context, toAddress string, amou
 	txhash, err := wm.Client.SendTransaction(ctx, tx)
 	if err != nil {
 		return "", fmt.Errorf("failed to send transaction : %v", err)
+	}
+	log.Println("txhash:", txhash)
+	return txhash, nil
+}
+
+// TransferTokensChecked transfers a specified amount of tokens from one account to another on the Solana blockchain.
+// It returns the transaction hash if successful, or an error if something goes wrong.
+func (wm *WalletManager) TransferTokensChecked(
+	mintAddr string, // mint地址
+	mintAuthority types.Account, // mint的权限账户
+	fromTokenAddr string, // 转出的代币地址
+	toTokenAddr string, // 转入的代币地址
+	amount uint64, // 转账数量
+	decimals uint8,
+) (string, error) {
+	feePayer := wm.Account
+	res, err := wm.Client.GetLatestBlockhash(context.Background())
+	if err != nil {
+		return "", err
+	}
+	mintPubkey := common.PublicKeyFromString(mintAddr)
+	fromTokenPubkey := common.PublicKeyFromString(fromTokenAddr)
+	toTokenPubkey := common.PublicKeyFromString(toTokenAddr)
+
+	tx, err := types.NewTransaction(types.NewTransactionParam{
+		Message: types.NewMessage(types.NewMessageParam{
+			FeePayer:        feePayer.PublicKey,
+			RecentBlockhash: res.Blockhash,
+			Instructions: []types.Instruction{
+				token.TransferChecked(token.TransferCheckedParam{
+					From:     fromTokenPubkey,
+					To:       toTokenPubkey,
+					Mint:     mintPubkey,
+					Auth:     mintAuthority.PublicKey,
+					Signers:  []common.PublicKey{},
+					Amount:   amount,
+					Decimals: decimals,
+				}),
+			},
+		}),
+		Signers: []types.Account{feePayer, mintAuthority},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	txhash, err := wm.Client.SendTransaction(context.Background(), tx)
+	if err != nil {
+		return "", err
 	}
 	log.Println("txhash:", txhash)
 	return txhash, nil
@@ -448,6 +497,7 @@ func CreateMint(feePayer types.Account, mintAuthority types.Account) {
 	if err != nil {
 		log.Fatalf("get min balacne for rent exemption, err: %v", err)
 	}
+	fmt.Println("rentExemptionBalance:", rentExemptionBalance)
 
 	res, err := c.GetLatestBlockhash(context.Background())
 	if err != nil {

@@ -15,6 +15,10 @@ const keyPath1 = "assets/wallet_7dEc3i8Niz.json"
 const keyPath2 = "assets/wallet_3qQEWctNXM.json"
 const singleTransferAmount = 100000000 // 0.1 SOL
 const QuoteAPI = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump&amount=500000000&slippageBps=100"
+const mintAddr = "J2LDFD6Cso2aRq6XhT2hBq1jcgqo9j4bEBM1VCh71ojX"
+const mintAuthority = "3qQEWctNXMxHiyoaQwAwn2xBRZGC7c2XeoPuLcZ6ZrUP"
+const ata2 = "3zwAJGJTTnSJfVHaLLtubVmpZXDLFY51fhVZjg1HCQxb"
+const ata1 = "31Fuuv2ekbt4ATZD1w8x9MkiiEnScWGZkGFDPteHsgXP"
 
 func main() {
 	// wallet.GenerateWallets(2)
@@ -34,16 +38,16 @@ func main() {
 		// 创建新账户并显示公钥
 		publicKey1, err = wm1.CreateAccount()
 		if err != nil {
-			log.Fatalf("Error creating account1: %v", err)
+			log.Fatalf("Error creating Account1: %v", err)
 		}
-		fmt.Printf("New account1 created with public key: %s\n", publicKey1)
+		fmt.Printf("New Account1 created with public key: %s\n", publicKey1)
 	} else {
 		// 加载现有账户（假设私钥存储在文件中）
 		publicKey1, err = wm1.LoadAccount(keyPath1) // 替换为实际路径
 		if err != nil {
-			log.Fatalf("Error loading account1: %v", err)
+			log.Fatalf("Error loading Account1: %v", err)
 		}
-		fmt.Printf("Loaded account1 with public key: %s\n", publicKey1)
+		fmt.Printf("Loaded Account1 with public key: %s\n", publicKey1)
 	}
 
 	var publicKey2 string
@@ -51,16 +55,16 @@ func main() {
 		// 创建新账户并显示公钥
 		publicKey2, err = wm2.CreateAccount()
 		if err != nil {
-			log.Fatalf("Error creating account2: %v", err)
+			log.Fatalf("Error creating Account2: %v", err)
 		}
-		fmt.Printf("New account2 created with public key: %s\n", publicKey2)
+		fmt.Printf("New Account2 created with public key: %s\n", publicKey2)
 	} else {
 		// 加载现有账户（假设私钥存储在文件中）
 		publicKey2, err = wm2.LoadAccount(keyPath2) // 替换为实际路径
 		if err != nil {
-			log.Fatalf("Error loading account2: %v", err)
+			log.Fatalf("Error loading Account2: %v", err)
 		}
-		fmt.Printf("Loaded account2 with public key: %s\n", publicKey2)
+		fmt.Printf("Loaded Account2 with public key: %s\n", publicKey2)
 	}
 
 	// 检查余额是否为空，如果是则请求空投
@@ -68,14 +72,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error checking balance: %v", err)
 	}
-	fmt.Printf("Balance for account %s: %d lamports\n", publicKey1, balance1)
+	fmt.Printf("Balance for Account1 %s: %d lamports\n", publicKey1, balance1)
 	if balance1 == 0 {
 		// 请求空投以获得测试 SOL
 		isSuccessed := wm1.RequestAirdrop(publicKey1, 1000000000) // 1 SOL
 		if isSuccessed {
-			fmt.Println("Airdrop successful for account1!")
+			fmt.Println("Airdrop successful for Account1!")
 		} else {
-			fmt.Println("Airdrop failed! for account1")
+			fmt.Println("Airdrop failed! for Account1")
 		}
 	}
 
@@ -83,37 +87,45 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error checking balance: %v", err)
 	}
-	fmt.Printf("Balance for account %s: %d lamports\n", publicKey2, balance2)
+	fmt.Printf("Balance for Account2 %s: %d lamports\n", publicKey2, balance2)
 	if balance2 == 0 {
 		isSuccessed := wm2.RequestAirdrop(publicKey2, 1000000000) // 1 SOL
 		if isSuccessed {
-			fmt.Println("Airdrop successful for account2!")
+			fmt.Println("Airdrop successful for Account2!")
 		} else {
-			fmt.Println("Airdrop failed! for account2")
+			fmt.Println("Airdrop failed! for Account2")
 		}
 	}
 
 	// 账户1向账户2转账
 	txhash1, err := wm1.TransferSOL(context.Background(), publicKey2, singleTransferAmount)
 	if err != nil {
-		log.Fatalf("[account1 transfer SOL to account2 failed] - Error transferring SOL: %v", err)
+		log.Fatalf("[Account1 transfer SOL to Account2 failed] - Error transferring SOL: %v", err)
 	}
-	fmt.Printf("[account1 transfer SOL to account2 successful] - txhash1: %s\n", txhash1)
+	fmt.Printf("[Account1 transfer SOL to Account2 successful] - txhash1: %s\n", txhash1)
 
 	// 账户2向账户1转账
 	txhash2, err := wm2.TransferSOL(context.Background(), publicKey1, singleTransferAmount)
 	if err != nil {
-		log.Fatalf("[account2 transfer SOL to account1 failed] - Error transferring SOL: %v", err)
+		log.Fatalf("[Account2 transfer SOL to Account1 failed] - Error transferring SOL: %v", err)
 	}
-	fmt.Printf("[account2 transfer SOL to account1 successful] - txhash2: %s\n", txhash2)
+	fmt.Printf("[Account2 transfer SOL to Account1 successful] - txhash2: %s\n", txhash2)
 
-	// // 向另一个账户转账
-	// txhash, err := wm1.TransferSOL(context.Background(), toPublicKey, singleTransferAmount)
+	// wallet.CreateMint(wm1.Account, wm2.Account)
+	// ata1, err := wm1.CreateTokenAccount(context.Background(), mintAddr)
 	// if err != nil {
-	// 	log.Fatalf("Error transferring SOL: %v", err)
+	// 	log.Fatalf("Error creating token account: %v", err)
 	// }
-	// fmt.Println("Transfer SOL successful!txhash:", txhash)
-
+	// fmt.Println("CreateTokenAccount successful!ata1:", ata1)
+	// ata2, err := wm2.CreateTokenAccount(context.Background(), mintAddr)
+	// if err != nil {
+	// 	log.Fatalf("Error creating token account: %v", err)
+	// }
+	// fmt.Println("CreateTokenAccount successful!ata2:", ata2)
+	_, err = wm1.TransferTokensChecked(mintAddr, wm2.Account, ata1, ata2, singleTransferAmount, 8)
+	if err != nil {
+		log.Fatalf("[Account1 transfer token to Account2 failed] - Error transferring token: %v", err)
+	}
 	// 检查目标账户余额
 	// balance, err = wm1.CheckAmount(context.Background(), SOL_MINT_ADDR)
 	// if err != nil {
