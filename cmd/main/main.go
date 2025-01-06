@@ -4,93 +4,131 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/paxzhu/go-solana/pkg/wallet"
 )
 
 const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112"
 const GOAT_MINT_ADDR = "CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump"
-const keyPath = "assets/wallet_7dEc3i8Niz.json"
+const keyPath1 = "assets/wallet_7dEc3i8Niz.json"
+const keyPath2 = "assets/wallet_3qQEWctNXM.json"
 const singleTransferAmount = 100000000 // 0.1 SOL
 const QuoteAPI = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump&amount=500000000&slippageBps=100"
-const toPublicKey = "3qQEWctNXMxHiyoaQwAwn2xBRZGC7c2XeoPuLcZ6ZrUP"
 
 func main() {
 	// wallet.GenerateWallets(2)
 	// 创建 WalletManager 实例
-	wm, err := wallet.NewWalletManager("devnet")
+	wm1, err := wallet.NewWalletManager("devnet")
+	if err != nil {
+		log.Fatalf("Error creating WalletManager: %v", err)
+	}
+	wm2, err := wallet.NewWalletManager("devnet")
 	if err != nil {
 		log.Fatalf("Error creating WalletManager: %v", err)
 	}
 
-	// 创建新账户并显示公钥
-	if keyPath == "" {
+	// 检查私钥文件是否存在，不存在则创建新账户，存在则加载现有账户
+	var publicKey1 string
+	if _, err := os.Stat(keyPath1); os.IsNotExist(err) {
 		// 创建新账户并显示公钥
-		publicKey, err := wm.CreateAccount()
+		publicKey1, err = wm1.CreateAccount()
 		if err != nil {
-			log.Fatalf("Error creating account: %v", err)
+			log.Fatalf("Error creating account1: %v", err)
 		}
-		fmt.Printf("New account created with public key: %s\n", publicKey)
-	}
-
-	// 加载账户并显示公钥
-	publicKey, err := wm.LoadAccount(keyPath)
-	if err != nil {
-		log.Fatalf("Error loading account: %v", err)
-	}
-	fmt.Printf("Load account with public key [%s] from [%s] \n", publicKey, keyPath)
-
-	// 请求空投以获得测试 SOL, 用于测试(可能存在空投限制)
-	isSuccessed := wm.RequestAirdrop(publicKey, 1000000000) // 1 SOL
-	if isSuccessed {
-		fmt.Println("Airdrop successful!")
+		fmt.Printf("New account1 created with public key: %s\n", publicKey1)
 	} else {
-		fmt.Println("Airdrop failed!")
+		// 加载现有账户（假设私钥存储在文件中）
+		publicKey1, err = wm1.LoadAccount(keyPath1) // 替换为实际路径
+		if err != nil {
+			log.Fatalf("Error loading account1: %v", err)
+		}
+		fmt.Printf("Loaded account1 with public key: %s\n", publicKey1)
 	}
 
-	// 检查账户余额
-	balance, err := wm.CheckAmount(context.Background(), SOL_MINT_ADDR)
+	var publicKey2 string
+	if _, err := os.Stat(keyPath2); os.IsNotExist(err) {
+		// 创建新账户并显示公钥
+		publicKey2, err = wm2.CreateAccount()
+		if err != nil {
+			log.Fatalf("Error creating account2: %v", err)
+		}
+		fmt.Printf("New account2 created with public key: %s\n", publicKey2)
+	} else {
+		// 加载现有账户（假设私钥存储在文件中）
+		publicKey2, err = wm2.LoadAccount(keyPath2) // 替换为实际路径
+		if err != nil {
+			log.Fatalf("Error loading account2: %v", err)
+		}
+		fmt.Printf("Loaded account2 with public key: %s\n", publicKey2)
+	}
+
+	// 检查余额是否为空，如果是则请求空投
+	balance1, err := wm1.CheckAmount(context.Background(), SOL_MINT_ADDR)
 	if err != nil {
 		log.Fatalf("Error checking balance: %v", err)
 	}
-	fmt.Printf("Balance for account %s: %d lamports\n", publicKey, balance)
-
-	// 向另一个账户转账
-	txhash, err := wm.TransferSOL(context.Background(), toPublicKey, singleTransferAmount)
-	if err != nil {
-		log.Fatalf("Error transferring SOL: %v", err)
+	fmt.Printf("Balance for account %s: %d lamports\n", publicKey1, balance1)
+	if balance1 == 0 {
+		// 请求空投以获得测试 SOL
+		isSuccessed := wm1.RequestAirdrop(publicKey1, 1000000000) // 1 SOL
+		if isSuccessed {
+			fmt.Println("Airdrop successful for account1!")
+		} else {
+			fmt.Println("Airdrop failed! for account1")
+		}
 	}
-	fmt.Println("Transfer SOL successful!txhash:", txhash)
+
+	balance2, err := wm2.CheckAmount(context.Background(), SOL_MINT_ADDR)
+	if err != nil {
+		log.Fatalf("Error checking balance: %v", err)
+	}
+	fmt.Printf("Balance for account %s: %d lamports\n", publicKey2, balance2)
+	if balance2 == 0 {
+		isSuccessed := wm2.RequestAirdrop(publicKey2, 1000000000) // 1 SOL
+		if isSuccessed {
+			fmt.Println("Airdrop successful for account2!")
+		} else {
+			fmt.Println("Airdrop failed! for account2")
+		}
+	}
+
+	// 账户1向账户2转账
+	txhash1, err := wm1.TransferSOL(context.Background(), publicKey2, singleTransferAmount)
+	if err != nil {
+		log.Fatalf("[account1 transfer SOL to account2 failed] - Error transferring SOL: %v", err)
+	}
+	fmt.Printf("[account1 transfer SOL to account2 successful] - txhash1: %s\n", txhash1)
+
+	// 账户2向账户1转账
+	txhash2, err := wm2.TransferSOL(context.Background(), publicKey1, singleTransferAmount)
+	if err != nil {
+		log.Fatalf("[account2 transfer SOL to account1 failed] - Error transferring SOL: %v", err)
+	}
+	fmt.Printf("[account2 transfer SOL to account1 successful] - txhash2: %s\n", txhash2)
+
+	// // 向另一个账户转账
+	// txhash, err := wm1.TransferSOL(context.Background(), toPublicKey, singleTransferAmount)
+	// if err != nil {
+	// 	log.Fatalf("Error transferring SOL: %v", err)
+	// }
+	// fmt.Println("Transfer SOL successful!txhash:", txhash)
 
 	// 检查目标账户余额
-	balance, err = wm.CheckAmount(context.Background(), SOL_MINT_ADDR)
-	if err != nil {
-		log.Fatalf("Error checking balance: %v", err)
-	}
-	fmt.Printf("Balance for account %s: %d lamports\n", toPublicKey, balance)
-
-	ata, err := wm.CreateTokenAccount(context.Background(), GOAT_MINT_ADDR)
-	if err != nil {
-		log.Fatalf("Error creating token account: %v", err)
-	}
-	fmt.Println("CreateTokenAccount successful!ata:", ata)
-	// 测试 Jupiter Swap
-	// wm.GetQuote(QuoteAPI)
-	wm.Sell(context.Background(), GOAT_MINT_ADDR, 0.5)
-
-	// 加载现有账户（假设私钥存储在文件中）
-	// err = wm.LoadAccount("path/to/private/key.json") // 替换为实际路径
+	// balance, err = wm1.CheckAmount(context.Background(), SOL_MINT_ADDR)
 	// if err != nil {
-	// 	log.Fatalf("Error loading account: %v", err)
+	// 	log.Fatalf("Error checking balance: %v", err)
 	// }
-	// fmt.Printf("Loaded account with public key: %s\n", wm.account.PublicKey.ToBase58())
+	// fmt.Printf("Balance for account %s: %d lamports\n", toPublicKey, balance)
 
-	// // 再次检查余额
-	// newBalance, err := wm.CheckAmount(context.Background(), "SOL")
+	// ata, err := wm1.CreateTokenAccount(context.Background(), GOAT_MINT_ADDR)
 	// if err != nil {
-	// 	log.Fatalf("Error checking loaded account balance: %v", err)
+	// 	log.Fatalf("Error creating token account: %v", err)
 	// }
-	// fmt.Printf("Balance for loaded account: %d SOL\n", newBalance)
+	// fmt.Println("CreateTokenAccount successful!ata:", ata)
+	// // 测试 Jupiter Swap
+	// // wm.GetQuote(QuoteAPI)
+	// wm1.Sell(context.Background(), GOAT_MINT_ADDR, 0.5)
 }
 
 // package main
